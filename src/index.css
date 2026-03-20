@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-brand-light: #f4f7f6;
+  --color-brand-dark: #121212;
+  --color-card-light: #ffffff;
+  --color-card-dark: #1e1e1e;
+}
+
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased transition-colors duration-300;
+  }
+}
