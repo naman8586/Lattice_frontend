@@ -6,7 +6,7 @@ import { Calendar, AlertCircle, Sun, Compass } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Brush, Legend } from 'recharts';
 
 import { useGeolocation } from '../hooks/useGeolocation';
-import { fetchHistoricalWeather } from '../services/api';
+import { fetchHistoricalWeather, fetchHistoricalAirQuality } from '../services/api';
 
 export default function Historical({ theme }) {
   const { latitude, longitude, loaded, error } = useGeolocation();
@@ -34,8 +34,11 @@ export default function Historical({ theme }) {
       setFetchError(null);
       setData(null); // Clear old data to prevent stale charts
       try {
-        const res = await fetchHistoricalWeather(latitude, longitude, startDate, endDate);
-        setData(res);
+        const [weatherRes, aqiRes] = await Promise.all([
+          fetchHistoricalWeather(latitude, longitude, startDate, endDate),
+          fetchHistoricalAirQuality(latitude, longitude, startDate, endDate)
+        ]);
+        setData({ weather: weatherRes, aqi: aqiRes });
       } catch (err) {
         setFetchError("Failed to fetch historical data for this range.");
         console.error(err);
@@ -52,12 +55,15 @@ export default function Historical({ theme }) {
   }, [loaded, latitude, longitude, startDate, endDate, error]);
 
   const chartData = useMemo(() => {
-    if (!data?.daily) return [];
+    if (!data?.weather?.daily || !data?.aqi?.hourly) return [];
     const arr = [];
-    for (let i = 0; i < data.daily.time.length; i++) {
+    const wDaily = data.weather.daily;
+    const aqiHourly = data.aqi.hourly;
+
+    for (let i = 0; i < wDaily.time.length; i++) {
         // Sunrise/Sunset to IST explicitly
-        const sRise = data.daily.sunrise[i];
-        const sSet = data.daily.sunset[i];
+        const sRise = wDaily.sunrise[i];
+        const sSet = wDaily.sunset[i];
         
         // Parse UTC time from Open-Meteo, convert to IST
         let sunriseIST = '';
@@ -71,17 +77,29 @@ export default function Historical({ theme }) {
           sunsetIST = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', timeStyle: 'short' }).format(sDate);
         }
 
+        // Aggregate Hourly AQI into Daily Max
+        const startIdx = i * 24;
+        const endIdx = startIdx + 24;
+        let dailyPm10Max = 0;
+        let dailyPm25Max = 0;
+        for (let j = startIdx; j < endIdx; j++) {
+           if (aqiHourly.pm10 && Math.round(aqiHourly.pm10[j]) > dailyPm10Max) dailyPm10Max = Math.round(aqiHourly.pm10[j]);
+           if (aqiHourly.pm2_5 && Math.round(aqiHourly.pm2_5[j]) > dailyPm25Max) dailyPm25Max = Math.round(aqiHourly.pm2_5[j]);
+        }
+
         arr.push({
-            date: data.daily.time[i],
-            tempMean: data.daily.temperature_2m_mean[i],
-            tempMax: data.daily.temperature_2m_max[i],
-            tempMin: data.daily.temperature_2m_min[i],
-            precip: data.daily.precipitation_sum[i],
-            windMax: data.daily.wind_speed_10m_max[i],
-            windDir: data.daily.wind_direction_10m_dominant[i],
+            date: wDaily.time[i],
+            tempMean: wDaily.temperature_2m_mean[i],
+            tempMax: wDaily.temperature_2m_max[i],
+            tempMin: wDaily.temperature_2m_min[i],
+            precip: wDaily.precipitation_sum[i],
+            windMax: wDaily.wind_speed_10m_max[i],
+            windDir: wDaily.wind_direction_10m_dominant[i],
             sunriseIST,
             sunsetIST,
-            sunCycleString: `${sunriseIST} - ${sunsetIST}`
+            sunCycleString: `${sunriseIST} - ${sunsetIST}`,
+            pm10Max: dailyPm10Max || 0,
+            pm25Max: dailyPm25Max || 0
         });
     }
     return arr;
@@ -231,6 +249,23 @@ export default function Historical({ theme }) {
                             <Bar yAxisId="right" name="Max Wind" dataKey="windMax" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                             <Brush dataKey="date" height={30} stroke={theme === 'dark' ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"} fill={theme === 'dark' ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)"} />
                         </BarChart>
+                    </ResponsiveContainer>
+                </motion.div>
+
+                {/* AQI Trends (PM10 and PM2.5 Max) */}
+                <motion.div className="bg-white dark:bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-gray-100 dark:border-white/10 shadow-xl dark:shadow-2xl h-[400px] w-full">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white/90">Air Quality Trends: Daily Peak PM10 & PM2.5</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} vertical={false} />
+                            <XAxis dataKey="date" stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} minTickGap={50}/>
+                            <YAxis stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} />
+                            <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.8)' : '#fff', border: theme === 'dark' ? 'none' : '1px solid #e5e7eb', borderRadius: '8px', color: theme === 'dark' ? '#fff' : '#1f2937' }} />
+                            <Legend verticalAlign="top" height={36} />
+                            <Area type="monotone" name="Peak PM10" dataKey="pm10Max" stroke="#f43f5e" fill="rgba(244,63,94,0.1)" strokeWidth={2} />
+                            <Area type="monotone" name="Peak PM2.5" dataKey="pm25Max" stroke="#8b5cf6" fill="rgba(139,92,246,0.1)" strokeWidth={2} />
+                            <Brush dataKey="date" height={30} stroke={theme === 'dark' ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"} fill={theme === 'dark' ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)"} />
+                        </AreaChart>
                     </ResponsiveContainer>
                 </motion.div>
 

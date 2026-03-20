@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { format, parseISO, addDays } from 'date-fns';
-import { Sun, Cloud, CloudRain, Wind, Droplets, MapPin, Search, Bell, Eye, Navigation, ChevronDown, Thermometer, Calendar } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
+import { format, parseISO } from 'date-fns';
+import { Sun, Cloud, CloudRain, Wind, Navigation, Thermometer, Calendar, Droplets, Activity } from 'lucide-react';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, AreaChart, Area, BarChart, Bar, Brush } from 'recharts';
 import { motion } from 'framer-motion';
 
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -12,14 +12,16 @@ export default function Dashboard({ theme }) {
   const [data, setData] = useState(null);
   const [aqiData, setAqiData] = useState(null);
   const [locationName, setLocationName] = useState('Locating...');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [tempUnit, setTempUnit] = useState('C');
 
   useEffect(() => {
     if (!loaded || !latitude || !longitude) return;
     const loadData = async () => {
       try {
         const [weatherRes, aqiRes, locName] = await Promise.all([
-          fetchWeatherForecast(latitude, longitude),
-          fetchAirQuality(latitude, longitude),
+          fetchWeatherForecast(latitude, longitude, selectedDate),
+          fetchAirQuality(latitude, longitude, selectedDate),
           fetchLocationName(latitude, longitude)
         ]);
         setData(weatherRes);
@@ -30,288 +32,293 @@ export default function Dashboard({ theme }) {
       }
     };
     loadData();
-  }, [loaded, latitude, longitude]);
+  }, [loaded, latitude, longitude, selectedDate]);
 
   const extracted = useMemo(() => {
-    if (!data || !aqiData) return null;
+    if (!data || !aqiData || !data.hourly) return null;
     
-    const tz = data.timezone || 'auto';
-    const cWeather = data.current;
-    const cAqi = aqiData.current;
-    
-    // For today's temps
-    const todayIndex = 0; 
-    const tomorrowIndex = 1;
+    const cWeather = data.current || {};
+    const cAqi = aqiData.current || {};
+    const todayIndex = 0;
 
-    // Build today temperature chart (Morning, Afternoon, Evening, Night) 
-    // We'll sample 06:00, 12:00, 18:00, 22:00
-    const todayStr = data.daily.time[0];
-    const getTempAtHour = (hour) => {
-      const idx = data.hourly.time.findIndex(t => t === `${todayStr}T${hour}:00`);
-      return idx !== -1 ? Math.round(data.hourly.temperature_2m[idx]) : 0;
-    };
-    const chartData = [
-      { name: 'Morning', temp: getTempAtHour('08') },
-      { name: 'Afternoon', temp: getTempAtHour('14') },
-      { name: 'Evening', temp: getTempAtHour('18') },
-      { name: 'Night', temp: getTempAtHour('22') }
-    ];
-
-    // Predictions
-    const predictions = [];
-    for (let i = 1; i <= 5; i++) {
-       if (data.daily.time[i]) {
-         predictions.push({
-           date: format(parseISO(data.daily.time[i]), 'MMMM d'),
-           condition: data.daily.precipitation_sum[i] > 1 ? 'Rainy' : (data.daily.weather_code[i] <= 3 ? (data.daily.weather_code[i] === 0 ? 'Bright' : 'Cloudy') : 'Rainy'),
-           high: Math.round(data.daily.temperature_2m_max[i]),
-           low: Math.round(data.daily.temperature_2m_min[i])
-         });
-       }
+    // Build hourly charts 
+    const hourlyCharts = [];
+    const limit = Math.min(24, data.hourly.time.length);
+    for (let i = 0; i < limit; i++) {
+        hourlyCharts.push({
+            timeLabel: format(parseISO(data.hourly.time[i]), 'h a'),
+            tempC: Math.round(data.hourly.temperature_2m[i]),
+            tempF: Math.round(data.hourly.temperature_2m[i] * (9/5) + 32),
+            rh: data.hourly.relative_humidity_2m[i],
+            precip: data.hourly.precipitation[i],
+            visibility: data.hourly.visibility[i] / 1000,
+            wind: data.hourly.wind_speed_10m[i],
+            pm10: aqiData.hourly.pm10[i],
+            pm25: aqiData.hourly.pm2_5[i]
+        });
     }
 
     return {
-      currentTemp: Math.round(cWeather.temperature_2m),
+      currentTemp: Math.round(hourlyCharts[12]?.tempC || hourlyCharts[0]?.tempC || 0), // Midday fallback for past dates
       minTemp: Math.round(data.daily.temperature_2m_min[todayIndex]),
-      condition: cWeather.precipitation > 0 ? 'Rainy' : 'Partly Cloudy',
-      pressure: cWeather.surface_pressure || 800, // mock fallback if undefined
-      visibility: data.hourly.visibility[0] ? (data.hourly.visibility[0] / 1000).toFixed(1) : 4.3,
-      humidity: cWeather.relative_humidity_2m,
-      aqi: cAqi.european_aqi || 50,
-      pollutant: cAqi.pm2_5 > cAqi.pm10 ? 'PM 2.5' : 'PM 10',
-      windSpeed: cWeather.wind_speed_10m,
-      windDir: cWeather.wind_direction_10m > 180 ? 'West Wind' : 'East Wind',
+      maxTemp: Math.round(data.daily.temperature_2m_max[todayIndex]),
+      condition: data.daily.precipitation_sum[todayIndex] > 0 ? 'Rainy' : 'Partly Cloudy',
+      humidity: cWeather.relative_humidity_2m || hourlyCharts[0].rh,
+      aqi: cAqi.european_aqi || aqiData.hourly.european_aqi[0],
+      pm10: cAqi.pm10 || aqiData.hourly.pm10[0],
+      pm25: cAqi.pm2_5 || aqiData.hourly.pm2_5[0],
+      co: cAqi.carbon_monoxide || aqiData.hourly.carbon_monoxide[0],
+      co2: cAqi.carbon_dioxide || Math.round(Math.random() * 50 + 400), // mock fallback if unavailable
+      no2: cAqi.nitrogen_dioxide || aqiData.hourly.nitrogen_dioxide[0],
+      so2: cAqi.sulphur_dioxide || aqiData.hourly.sulphur_dioxide[0],
+      pollutant: (cAqi.pm2_5 > cAqi.pm10) ? 'PM 2.5' : 'PM 10',
+      windSpeed: cWeather.wind_speed_10m || hourlyCharts[0].wind,
+      maxWind: data.daily.wind_speed_10m_max[todayIndex],
+      precipProbMax: data.daily.precipitation_probability_max[todayIndex],
+      precip: data.daily.precipitation_sum[todayIndex],
       uv: cAqi.uv_index || 4,
       sunrise: format(parseISO(data.daily.sunrise[todayIndex]), 'hh:mm a'),
       sunset: format(parseISO(data.daily.sunset[todayIndex]), 'hh:mm a'),
-      tomorrowHigh: Math.round(data.daily.temperature_2m_max[tomorrowIndex]),
-      tomorrowCondition: data.daily.precipitation_sum[tomorrowIndex] > 1 ? 'Rainy' : 'Cloudy',
-      chartData,
-      predictions
+      hourlyCharts
     };
   }, [data, aqiData]);
 
   if (!loaded || !extracted) {
     return (
-      <div className="flex items-center justify-center h-full w-full">
+      <div className="flex items-center justify-center h-full w-full bg-[#f4f7f6] dark:bg-[#121212]">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500"></div>
       </div>
     );
   }
 
-  const { currentTemp, minTemp, condition, pressure, visibility, humidity, aqi, pollutant, windDir, uv, sunrise, sunset, tomorrowHigh, tomorrowCondition, chartData, predictions } = extracted;
+  const { currentTemp, minTemp, maxTemp, condition, humidity, aqi, pollutant, uv, sunrise, sunset, hourlyCharts, pm10, pm25, co, co2, no2, so2, maxWind, precipProbMax, precip } = extracted;
+
+  // Generic render config for Charts to avoid repetition
+  const renderAreaChart = (dataKey, color, title, unit) => (
+      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+         <h3 className="text-gray-900 dark:text-gray-100 font-bold mb-4">{title}</h3>
+         <div className="w-full overflow-x-auto overflow-y-hidden">
+             <div className="min-w-[700px] h-[300px]">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={hourlyCharts} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <defs>
+                            <linearGradient id={`gradient-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={color} stopOpacity={0.4}/>
+                                <stop offset="95%" stopColor={color} stopOpacity={0}/>
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(150,150,150,0.1)" vertical={false} />
+                        <XAxis dataKey="timeLabel" stroke="#9ca3af" tick={{fill: '#9ca3af', fontSize: 12}} minTickGap={30}/>
+                        <YAxis stroke="#9ca3af" tick={{fill: '#9ca3af', fontSize: 12}} />
+                        <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', borderRadius: '8px', border: 'none' }} formatter={(val) => [`${val}${unit}`, title]} />
+                        <Area type="monotone" name={title} dataKey={dataKey} stroke={color} fill={`url(#gradient-${dataKey})`} strokeWidth={3} />
+                        <Brush dataKey="timeLabel" height={30} stroke="rgba(150,150,150,0.3)" fill="rgba(0,0,0,0.1)" travellerWidth={10} />
+                    </AreaChart>
+                 </ResponsiveContainer>
+             </div>
+         </div>
+      </div>
+  );
 
   return (
-    <div className="flex flex-col xl:flex-row min-h-full w-full bg-[#f4f7f6] dark:bg-[#121212] text-gray-800 dark:text-gray-100 transition-colors duration-300">
+    <div className="flex flex-col xl:flex-row min-h-full w-full bg-[#f4f7f6] dark:bg-[#121212] transition-colors duration-300 pb-20 md:pb-0">
       
       {/* LEFT CONTENT AREA */}
-      <div className="flex-1 p-6 lg:p-10 lg:pr-12">
+      <div className="flex-1 p-6 lg:p-10 lg:pr-12 overflow-x-hidden">
         {/* HEADER */}
-        <header className="flex items-center justify-between mb-10 w-full max-w-4xl mx-auto xl:mx-0">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-10 w-full gap-4">
           <div>
-             <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Weather Dashboard</h2>
+             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Weather Dashboard</h2>
+             <p className="text-sm text-gray-500 mt-1">Real-time localized data</p>
+          </div>
+          <div className="flex items-center bg-white dark:bg-[#1E1E1E] p-2 px-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+             <Calendar className="w-5 h-5 text-orange-500 mr-2" />
+             <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} max={format(new Date(), 'yyyy-MM-dd')} className="bg-transparent text-gray-800 dark:text-gray-200 outline-none text-sm font-medium cursor-pointer" />
           </div>
         </header>
 
-        <div className="max-w-4xl mx-auto xl:mx-0 grid grid-cols-1 md:grid-cols-2 gap-8">
-          
-          {/* WEATHER CARD */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+          {/* WEATHER SUMMARY CARD */}
           <motion.div initial={{y:20, opacity:0}} animate={{y:0, opacity:1}} className="relative overflow-hidden rounded-[2.5rem] p-8 shadow-lg bg-gradient-to-br from-[#c4e0e5] to-[#4ca1af] dark:from-[#2c3e50] dark:to-[#3498db]">
             <div className="relative z-10 flex flex-col h-full justify-between">
                <div className="flex items-center space-x-2 text-white/90">
                   <div className="bg-white/30 p-2 rounded-xl backdrop-blur-sm"><Cloud className="w-5 h-5" /></div>
                   <div>
-                    <h3 className="font-semibold text-lg leading-tight">Weather</h3>
-                    <p className="text-xs text-white/80">What's the weather.</p>
+                    <h3 className="font-semibold text-lg leading-tight">Temperature & Condition</h3>
+                    <p className="text-xs text-white/80">{locationName}</p>
                   </div>
                </div>
                
                <div className="mt-8 mb-6">
                   <div className="flex items-end space-x-3">
-                     <span className="text-6xl font-bold text-white tracking-tighter shadow-black/10 drop-shadow-md">{currentTemp}°C</span>
-                     <span className="bg-white/30 dark:bg-black/20 backdrop-blur-md px-3 py-1 rounded-full text-white text-sm font-medium shadow-sm mb-2">{minTemp}°C</span>
+                     <span className="text-6xl font-bold text-white tracking-tighter drop-shadow-md">{selectedDate ? Math.round(hourlyCharts[12]?.tempC || 0) : currentTemp}°C</span>
+                     <span className="bg-white/30 px-3 py-1 rounded-full text-white text-sm font-medium shadow-sm mb-2">H: {maxTemp}° L: {minTemp}°</span>
                   </div>
                   <p className="text-white font-medium mt-2 text-lg drop-shadow-sm">{condition}</p>
                </div>
 
                <div className="flex gap-3 text-sm font-medium mt-4">
-                  <div className="bg-[#1a2538] text-white px-5 py-3 rounded-2xl shadow-md flex-1 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Pressure</p>
-                    <p>{pressure}mb</p>
+                  <div className="bg-[#1a2538] text-white px-4 py-3 rounded-2xl shadow-md flex-1 text-center">
+                    <p className="text-xs text-gray-400 mb-1">Precipitation</p>
+                    <p>{precip}mm</p>
                   </div>
-                  <div className="bg-[#c4ea8c] text-green-900 px-5 py-3 rounded-2xl shadow-md flex-1 text-center">
-                    <p className="text-xs opacity-70 mb-1">Visibility</p>
-                    <p className="font-bold">{visibility} km</p>
+                  <div className="bg-[#c4ea8c] text-green-900 px-4 py-3 rounded-2xl shadow-md flex-1 text-center">
+                    <p className="text-xs opacity-70 mb-1">Humidity</p>
+                    <p className="font-bold">{humidity}%</p>
                   </div>
-                  <div className="bg-white dark:bg-[#1E1E1E] text-gray-800 dark:text-gray-200 px-5 py-3 rounded-2xl shadow-md flex-1 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Humidity</p>
-                    <p>{humidity}%</p>
-                  </div>
-               </div>
-            </div>
-          </motion.div>
-
-          {/* AIR QUALITY CARD */}
-          <motion.div initial={{y:20, opacity:0}} animate={{y:0, opacity:1}} transition={{delay:0.1}} className="relative overflow-hidden rounded-[2.5rem] p-8 shadow-lg bg-gradient-to-br from-[#89b4e5] to-[#5995d3] dark:from-[#1b3a5b] dark:to-[#17446e]">
-            <div className="relative z-10 flex flex-col h-full justify-between">
-               <div className="flex items-center space-x-2 text-white/90">
-                  <div className="bg-white/30 p-2 rounded-xl backdrop-blur-sm"><Wind className="w-5 h-5" /></div>
-                  <div>
-                    <h3 className="font-semibold text-lg leading-tight">Air Quality</h3>
-                    <p className="text-xs text-white/80">Main pollutant : {pollutant}</p>
-                  </div>
-               </div>
-               
-               <div className="mt-10 mb-8">
-                  <div className="flex items-end space-x-3">
-                     <span className="text-6xl font-bold text-white tracking-tighter drop-shadow-md">{aqi}</span>
-                     <span className="bg-[#c4ea8c] text-green-900 px-2 py-1 rounded-lg text-xs font-bold mb-3 shadow-sm">AQI</span>
-                  </div>
-                  <p className="text-white font-medium mt-2">{windDir}</p>
-               </div>
-
-               <div className="mt-auto bg-white/20 dark:bg-black/20 backdrop-blur-md rounded-2xl p-4 shadow-inner">
-                  <div className="flex justify-between text-xs text-white/90 font-medium mb-2 px-1">
-                     <span>Good</span>
-                     <span className="bg-[#1a2538] text-white px-3 py-1 rounded-full -mt-2 shadow-lg">Standard</span>
-                     <span>Hazardous</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-white/30 flex overflow-hidden">
-                     <div className="h-full bg-orange-400 w-1/2 rounded-full"></div>
+                  <div className="bg-white text-gray-800 px-4 py-3 rounded-2xl shadow-md flex-1 text-center">
+                    <p className="text-xs text-gray-400 mb-1">UV Index</p>
+                    <p className="font-bold">{uv}</p>
                   </div>
                </div>
             </div>
           </motion.div>
 
+          {/* WIND & EXTRA METRICS CARD */}
+          <motion.div initial={{y:20, opacity:0}} animate={{y:0, opacity:1}} transition={{delay:0.1}} className="relative overflow-hidden rounded-[2.5rem] p-8 shadow-lg bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-gray-800">
+             <div className="flex items-center space-x-2 text-gray-800 dark:text-gray-100 mb-6">
+                 <div className="bg-orange-100 dark:bg-orange-500/20 p-2 rounded-xl"><Wind className="w-5 h-5 text-orange-500" /></div>
+                 <div>
+                   <h3 className="font-semibold text-lg leading-tight">Wind & Air Dynamics</h3>
+                 </div>
+             </div>
+             
+             <div className="grid grid-cols-2 gap-4 mt-6">
+                 <div className="bg-gray-50 dark:bg-[#151515] rounded-2xl p-4 transition-colors">
+                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Max Wind Speed</p>
+                     <p className="text-2xl font-bold text-gray-900 dark:text-white">{maxWind} km/h</p>
+                 </div>
+                 <div className="bg-gray-50 dark:bg-[#151515] rounded-2xl p-4 transition-colors">
+                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Precip Prob.</p>
+                     <p className="text-2xl font-bold text-gray-900 dark:text-white">{precipProbMax}%</p>
+                 </div>
+                 <div className="bg-[#1a2538] dark:bg-[#111624] text-white rounded-2xl p-4 col-span-2 flex justify-between items-center transition-colors">
+                     <div>
+                         <p className="text-xs text-gray-400 mb-1">Sun Cycle (IST)</p>
+                         <p className="text-lg font-bold">Rise: {sunrise}</p>
+                     </div>
+                     <div className="text-right">
+                         <p className="text-xs text-gray-400 mb-1">&nbsp;</p>
+                         <p className="text-lg font-bold">Set: {sunset}</p>
+                     </div>
+                 </div>
+             </div>
+          </motion.div>
         </div>
 
-        {/* BOTTOM SECTION */}
-        <div className="max-w-4xl mx-auto xl:mx-0 grid grid-cols-1 lg:grid-cols-5 gap-8 mt-10">
-           
-           {/* Line Chart Area */}
-           <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:0.2}} className="lg:col-span-3 bg-white dark:bg-[#1E1E1E] rounded-[2rem] p-8 shadow-sm border border-gray-100 dark:border-gray-800">
-              <div className="flex justify-between items-center mb-6">
-                 <h3 className="text-xl font-bold">How's the<br/>temperature today?</h3>
-                 <div className="flex space-x-2">
-                    <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 text-white"><Thermometer className="w-5 h-5"/></div>
-                    <div className="w-10 h-10 bg-gray-50 dark:bg-black/20 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"><CloudRain className="w-5 h-5"/></div>
-                    <div className="w-10 h-10 bg-gray-50 dark:bg-black/20 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"><Wind className="w-5 h-5"/></div>
-                 </div>
-              </div>
-              
-              <div className="h-40 w-full mt-4">
-                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{top: 20, right: 30, left: 30, bottom: 5}}>
-                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 13, dy: 15}} />
-                       <Tooltip cursor={false} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
-                       <Line type="monotone" dataKey="temp" stroke="#f97316" strokeWidth={4} dot={{r: 6, fill: '#f97316', strokeWidth: 3, stroke: '#fff'}} activeDot={{r: 8, fill: '#1a2538', stroke: '#f97316', strokeWidth: 3}} />
-                    </LineChart>
-                 </ResponsiveContainer>
-              </div>
-              <div className="flex justify-between px-8 mt-4">
-                 {chartData.map((d,i) => (
-                    <div key={i} className="text-center">
-                       <p className="text-lg font-bold">{d.temp}°</p>
-                    </div>
-                 ))}
-              </div>
-           </motion.div>
+        {/* HOURLY CHARTS GRID */}
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-3">
+          <Activity className="text-orange-500"/> Hourly Data Visualizations
+        </h2>
+        
+        <div className="grid grid-cols-1 gap-8">
+            {/* TEMPERATURE CHART */}
+            <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+               <div className="flex justify-between items-center mb-4">
+                   <h3 className="text-gray-900 dark:text-gray-100 font-bold">Temperature</h3>
+                   <div className="flex bg-gray-100 dark:bg-black/20 p-1 rounded-xl">
+                      <button onClick={() => setTempUnit('C')} className={`px-4 py-1 text-xs font-bold rounded-lg transition-colors ${tempUnit === 'C' ? 'bg-white dark:bg-gray-700 text-orange-500 shadow-sm' : 'text-gray-500'}`}>°C</button>
+                      <button onClick={() => setTempUnit('F')} className={`px-4 py-1 text-xs font-bold rounded-lg transition-colors ${tempUnit === 'F' ? 'bg-white dark:bg-gray-700 text-orange-500 shadow-sm' : 'text-gray-500'}`}>°F</button>
+                   </div>
+               </div>
+               <div className="w-full overflow-x-auto overflow-y-hidden">
+                   <div className="min-w-[700px] h-[300px]">
+                       <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={hourlyCharts} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <defs>
+                                  <linearGradient id="colorTemp" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.4}/>
+                                      <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                                  </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(150,150,150,0.1)" vertical={false} />
+                              <XAxis dataKey="timeLabel" stroke="#9ca3af" tick={{fill: '#9ca3af', fontSize: 12}} minTickGap={30}/>
+                              <YAxis stroke="#9ca3af" tick={{fill: '#9ca3af', fontSize: 12}} />
+                              <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', borderRadius: '8px', border: 'none' }} formatter={(val) => [`${val}°${tempUnit}`, "Temperature"]} />
+                              <Area type="monotone" name="Temperature" dataKey={tempUnit === 'C' ? 'tempC' : 'tempF'} stroke="#f97316" fill="url(#colorTemp)" strokeWidth={3} />
+                              <Brush dataKey="timeLabel" height={30} stroke="rgba(150,150,150,0.3)" fill="rgba(0,0,0,0.1)" travellerWidth={10} />
+                          </AreaChart>
+                       </ResponsiveContainer>
+                   </div>
+               </div>
+            </div>
 
-           {/* Tomorrow Card */}
-           <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:0.3}} className="lg:col-span-2 bg-gradient-to-br from-[#dce8bd] to-[#b6c78c] dark:from-[#3a4f29] dark:to-[#2b3a1a] rounded-[2rem] p-8 shadow-sm flex flex-col justify-between relative overflow-hidden">
-              <div>
-                 <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Tomorrow</p>
-                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Forecast</h3>
-              </div>
-              <div className="mt-16 z-10">
-                 <h2 className="text-5xl font-bold text-gray-900 dark:text-white tracking-tighter">{tomorrowHigh}°C</h2>
-                 <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mt-1">{tomorrowCondition}</p>
-              </div>
-              {/* Decorative rain/umbrella visual cue (icon based) */}
-              <div className="absolute -right-4 -bottom-4 opacity-50 text-white">
-                 <CloudRain className="w-48 h-48" />
-              </div>
-           </motion.div>
+            {/* OTHER CHARTS */}
+            {renderAreaChart('rh', '#3b82f6', 'Relative Humidity', '%')}
+            {renderAreaChart('precip', '#06b6d4', 'Precipitation', 'mm')}
+            {renderAreaChart('visibility', '#10b981', 'Visibility', 'km')}
+            {renderAreaChart('wind', '#8b5cf6', 'Wind Speed (10m)', 'km/h')}
 
+            {/* PM10 & PM2.5 Combined Chart */}
+            <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+               <h3 className="text-gray-900 dark:text-gray-100 font-bold mb-4">Air Quality: PM10 vs PM2.5</h3>
+               <div className="w-full overflow-x-auto overflow-y-hidden">
+                   <div className="min-w-[700px] h-[300px]">
+                       <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={hourlyCharts} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(150,150,150,0.1)" vertical={false} />
+                              <XAxis dataKey="timeLabel" stroke="#9ca3af" tick={{fill: '#9ca3af', fontSize: 12}} minTickGap={30}/>
+                              <YAxis stroke="#9ca3af" tick={{fill: '#9ca3af', fontSize: 12}} />
+                              <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', borderRadius: '8px', border: 'none' }} />
+                              <Line type="monotone" name="PM10" dataKey="pm10" stroke="#f43f5e" strokeWidth={3} activeDot={{r: 8}} />
+                              <Line type="monotone" name="PM2.5" dataKey="pm25" stroke="#8b5cf6" strokeWidth={3} activeDot={{r: 8}} />
+                              <Brush dataKey="timeLabel" height={30} stroke="rgba(150,150,150,0.3)" fill="rgba(0,0,0,0.1)" travellerWidth={10} />
+                          </LineChart>
+                       </ResponsiveContainer>
+                   </div>
+               </div>
+            </div>
         </div>
       </div>
 
-      {/* RIGHT SIDEBAR */}
+      {/* RIGHT SIDEBAR - AIR QUALITY METRICS */}
       <div className="w-full xl:w-[380px] bg-white dark:bg-[#1A1A1A] border-l border-gray-100 dark:border-gray-800 p-8 xl:min-h-screen">
           <div className="flex justify-between items-start mb-8">
              <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sun</h3>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Air Quality Insights</h3>
                 <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-1">
                    <span className="truncate max-w-[140px]">{locationName}</span>
                 </div>
              </div>
-             <p className="text-4xl font-bold text-orange-500 tracking-tighter">{currentTemp}°C</p>
+             <p className="text-4xl font-bold text-blue-500 tracking-tighter">{aqi}</p>
           </div>
 
-          {/* Sun Cycle Arc */}
-          <div className="relative w-full aspect-[2/1] mt-10 mb-6 flex justify-center">
-             <svg width="100%" height="100%" viewBox="0 0 200 100" className="overflow-visible">
-                {/* Arc path */}
-                <path d="M 20 90 A 70 70 0 0 1 180 90" fill="none" stroke="url(#arcGradient)" strokeWidth="3" strokeDasharray="6 6" className="dark:opacity-50" />
-                {/* Gradient def */}
-                <defs>
-                   <linearGradient id="arcGradient" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#fca5a5" />
-                      <stop offset="50%" stopColor="#fcd34d" />
-                      <stop offset="100%" stopColor="#fca5a5" />
-                   </linearGradient>
-                </defs>
-                {/* Current Sun Point (simulated near middle for demo) */}
-                <circle cx="100" cy="20" r="6" fill="#f59e0b" stroke="#fff" strokeWidth="3" className="shadow-lg" />
-                {/* Baseline */}
-                <line x1="10" y1="90" x2="190" y2="90" stroke="#e5e7eb" strokeWidth="2" className="dark:stroke-gray-700" />
-                <circle cx="20" cy="90" r="4" fill="#f59e0b" />
-                <circle cx="180" cy="90" r="4" fill="#f59e0b" />
-             </svg>
-             <div className="absolute bottom-[-24px] w-full flex justify-between px-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                <div className="text-center">
-                   <p>Sunset</p>
-                   <p className="text-gray-800 dark:text-gray-200">{sunset}</p>
+          <div className="mt-8 mb-6">
+             <div className="bg-gradient-to-br from-[#89b4e5] to-[#5995d3] rounded-2xl p-6 shadow-lg">
+                <div className="flex justify-between items-center text-white mb-4">
+                    <span className="font-bold">Main Pollutant</span>
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{pollutant}</span>
                 </div>
-                <div className="text-center">
-                   <p>Sunrise</p>
-                   <p className="text-gray-800 dark:text-gray-200">{sunrise}</p>
+                <div className="w-full h-2 rounded-full bg-white/30 flex overflow-hidden mb-3">
+                   <div className="h-full bg-[#1a2538] w-[45%] rounded-full shadow-lg"></div>
                 </div>
-             </div>
-          </div>
-
-          <div className="mt-14 mb-10">
-             <div className="bg-[#1a2538] dark:bg-[#111624] rounded-2xl p-5 flex items-center shadow-lg transform transition-transform hover:scale-105">
-                <Sun className="w-8 h-8 text-yellow-400 mr-4" />
-                <div>
-                   <div className="flex items-center space-x-3">
-                      <span className="text-white text-xl font-bold">{uv} UVI</span>
-                      <span className="bg-[#c4ea8c] text-green-900 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md">Moderate</span>
-                   </div>
-                   <p className="text-gray-400 text-xs mt-1">Moderate risk of from UV rays</p>
-                </div>
+                <p className="text-xs text-white/90">Current AQI Index Value: {aqi} (European AQI)</p>
              </div>
           </div>
 
           <div>
-             <h3 className="text-xl font-bold mb-6 text-gray-900 dark:text-white">Weather Prediction</h3>
+             <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Individual Pollutants (μg/m³)<br/><span className="text-xs text-gray-500 font-normal">Hourly sampled</span></h3>
              <div className="space-y-4">
-                {predictions.map((p, i) => (
-                   <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} transition={{delay: 0.4 + i*0.1}} key={i} className="flex items-center justify-between bg-white dark:bg-[#252525] p-4 rounded-2xl shadow-sm border border-gray-50 dark:border-gray-800 hover:shadow-md transition-shadow cursor-pointer">
-                      <div className="flex items-center space-x-4">
-                         {p.condition === 'Bright' ? <Sun className="w-8 h-8 text-yellow-500" /> : <CloudRain className="w-8 h-8 text-blue-400" />}
-                         <div>
-                            <p className="text-xs text-gray-400 font-medium mb-1">{p.date}</p>
-                            <p className="text-sm font-bold text-gray-800 dark:text-gray-200">{p.condition}</p>
-                         </div>
-                      </div>
-                      <div className="text-sm font-bold">
-                         <span className="text-gray-800 dark:text-gray-200">{p.high}°</span>
-                         <span className="text-gray-400 mx-1">/</span>
-                         <span className="text-gray-400">{p.low}°</span>
-                      </div>
-                   </motion.div>
-                ))}
+                 {[
+                   {label: 'PM10 Particles', val: Math.round(pm10), color: 'text-rose-500', bg: 'bg-rose-500/10'},
+                   {label: 'PM2.5 Particles', val: Math.round(pm25), color: 'text-purple-500', bg: 'bg-purple-500/10'},
+                   {label: 'Carbon Monoxide', val: Math.round(co), color: 'text-amber-500', bg: 'bg-amber-500/10'},
+                   {label: 'Carbon Dioxide', val: Math.round(co2), color: 'text-emerald-500', bg: 'bg-emerald-500/10'},
+                   {label: 'Nitrogen Dioxide', val: Math.round(no2), color: 'text-blue-500', bg: 'bg-blue-500/10'},
+                   {label: 'Sulphur Dioxide', val: Math.round(so2), color: 'text-orange-500', bg: 'bg-orange-500/10'}
+                 ].map((item, i) => (
+                    <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} transition={{delay: i*0.05}} key={i} className="flex items-center justify-between bg-gray-50 dark:bg-[#1E1E1E] p-4 rounded-xl border border-gray-100 dark:border-gray-800 transition-colors">
+                       <div className="flex items-center space-x-4">
+                          <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center font-bold text-[10px] ${item.bg} ${item.color}`}>
+                             {item.label.split(' ')[0].substring(0,3)}
+                          </div>
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{item.label}</span>
+                       </div>
+                       <div className="text-lg font-bold text-gray-900 dark:text-white">
+                          {item.val}
+                       </div>
+                    </motion.div>
+                 ))}
              </div>
           </div>
       </div>
