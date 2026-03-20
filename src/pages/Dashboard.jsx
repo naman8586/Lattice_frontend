@@ -221,7 +221,7 @@ export default function Dashboard({ theme }) {
            <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:0.3}} className="lg:col-span-2 bg-gradient-to-br from-[#dce8bd] to-[#b6c78c] dark:from-[#3a4f29] dark:to-[#2b3a1a] rounded-[2rem] p-8 shadow-sm flex flex-col justify-between relative overflow-hidden">
               <div>
                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Tomorrow</p>
-                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Alam Barzah</h3>
+                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Forecast</h3>
               </div>
               <div className="mt-16 z-10">
                  <h2 className="text-5xl font-bold text-gray-900 dark:text-white tracking-tighter">{tomorrowHigh}°C</h2>

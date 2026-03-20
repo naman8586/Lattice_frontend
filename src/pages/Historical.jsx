@@ -8,7 +8,7 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as
 import { useGeolocation } from '../hooks/useGeolocation';
 import { fetchHistoricalWeather } from '../services/api';
 
-export default function Historical() {
+export default function Historical({ theme }) {
   const { latitude, longitude, loaded, error } = useGeolocation();
   
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -109,36 +109,52 @@ export default function Historical() {
         className="space-y-8 max-w-7xl mx-auto"
       >
       <div className="mt-6">
-        <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-blue-500 drop-shadow-lg mb-2">
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-blue-600 dark:from-teal-300 dark:to-blue-500 drop-shadow-md mb-2">
           Historical Trends
         </h1>
-        <p className="text-gray-300">Analyze long-term weather patterns up to 2 years back.</p>
+        <p className="text-gray-600 dark:text-gray-300">Analyze long-term weather patterns up to 2 years back.</p>
       </div>
 
-      <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-white/20 shadow-xl flex flex-col sm:flex-row items-center gap-4">
-        <Calendar className="text-blue-400 w-6 h-6 shrink-0" />
-        <div className="flex space-x-2 items-center w-full">
-            <div className="flex flex-col flex-1">
-                <label className="text-xs text-gray-400 mb-1 ml-1">Start Date</label>
+      <div className="bg-white dark:bg-white/10 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-gray-200 dark:border-white/20 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-blue-100 dark:bg-blue-500/20 rounded-xl">
+            <Calendar className="text-blue-500 dark:text-blue-400 w-6 h-6 shrink-0" />
+          </div>
+          <div className="flex flex-col">
+            <h2 className="text-gray-900 dark:text-white font-semibold text-lg flex items-center gap-2">
+              Selected Range
+              {differenceInDays(parseISO(endDate), parseISO(startDate)) === 30 && (
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/30 uppercase tracking-wider font-bold">Default 30 Days</span>
+              )}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+               {format(parseISO(startDate), 'MMMM d, yyyy')} <span className="text-gray-400 dark:text-gray-500 mx-1">to</span> {format(parseISO(endDate), 'MMMM d, yyyy')}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 items-center w-full lg:w-auto bg-gray-50 dark:bg-black/20 p-3 rounded-xl border border-gray-100 dark:border-white/5">
+            <div className="flex flex-col flex-1 w-full sm:w-auto px-2">
+                <label className="text-[10px] text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider font-semibold">Start Date</label>
                 <input 
                     type="date" 
                     value={startDate}
                     min={maxPastDate}
                     max={endDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="bg-black/20 text-white rounded-lg p-2 outline-none border border-white/10 focus:border-blue-400 transition-colors"
+                    className="bg-transparent text-gray-900 dark:text-white text-sm outline-none cursor-pointer"
                 />
             </div>
-            <span className="text-gray-500 mt-5">to</span>
-            <div className="flex flex-col flex-1">
-                <label className="text-xs text-gray-400 mb-1 ml-1">End Date</label>
+            <div className="hidden sm:block w-[1px] h-8 bg-gray-200 dark:bg-white/10"></div>
+            <div className="flex flex-col flex-1 w-full sm:w-auto px-2">
+                <label className="text-[10px] text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider font-semibold">End Date</label>
                 <input 
                     type="date" 
                     value={endDate}
                     min={startDate}
                     max={today}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="bg-black/20 text-white rounded-lg p-2 outline-none border border-white/10 focus:border-blue-400 transition-colors"
+                    className="bg-transparent text-gray-900 dark:text-white text-sm outline-none cursor-pointer"
                 />
             </div>
         </div>
@@ -161,20 +177,20 @@ export default function Historical() {
       {!loading && chartData.length > 0 && (
         <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-               <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10">
-                   <h3 className="text-sm text-gray-400 mb-1">Total Precipitation over Range</h3>
-                   <p className="text-4xl font-bold text-cyan-300">{totalPrecipitation} mm</p>
+               <div className="bg-white dark:bg-white/5 backdrop-blur rounded-2xl p-6 border border-gray-100 dark:border-white/10 shadow-sm dark:shadow-none">
+                   <h3 className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Precipitation over Range</h3>
+                   <p className="text-4xl font-bold text-cyan-600 dark:text-cyan-300">{totalPrecipitation} mm</p>
                </div>
-               <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10">
-                   <h3 className="text-sm text-gray-400 mb-1">Total Days</h3>
-                   <p className="text-4xl font-bold text-teal-300">{chartData.length} days</p>
+               <div className="bg-white dark:bg-white/5 backdrop-blur rounded-2xl p-6 border border-gray-100 dark:border-white/10 shadow-sm dark:shadow-none">
+                   <h3 className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Days</h3>
+                   <p className="text-4xl font-bold text-teal-600 dark:text-teal-300">{chartData.length} days</p>
                </div>
             </div>
 
             <div className="grid grid-cols-1 gap-8">
                 {/* Temperature Trends */}
-                <motion.div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-white/10 shadow-2xl h-[450px] w-full">
-                    <h3 className="text-lg font-semibold mb-4 text-white/90">Temperature Trends (°C)</h3>
+                <motion.div className="bg-white dark:bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-gray-100 dark:border-white/10 shadow-xl dark:shadow-2xl h-[450px] w-full">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white/90">Temperature Trends (°C)</h3>
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
@@ -187,43 +203,43 @@ export default function Historical() {
                                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 12}} minTickGap={50}/>
-                            <YAxis stroke="rgba(255,255,255,0.5)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 12}} />
-                            <RechartsTooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} vertical={false} />
+                            <XAxis dataKey="date" stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} minTickGap={50}/>
+                            <YAxis stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} />
+                            <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.8)' : '#fff', border: theme === 'dark' ? 'none' : '1px solid #e5e7eb', borderRadius: '8px', color: theme === 'dark' ? '#fff' : '#1f2937' }} />
                             <Legend verticalAlign="top" height={36} />
                             <Area type="monotone" name="Max Temp" dataKey="tempMax" stroke="#ef4444" fill="url(#colorMaxTemp)" />
                             <Area type="monotone" name="Mean Temp" dataKey="tempMean" stroke="#f59e0b" fill="none" strokeWidth={2} />
                             <Area type="monotone" name="Min Temp" dataKey="tempMin" stroke="#3b82f6" fill="url(#colorMinTemp)" />
-                            <Brush dataKey="date" height={30} stroke="rgba(255,255,255,0.2)" fill="rgba(0,0,0,0.3)" />
+                            <Brush dataKey="date" height={30} stroke={theme === 'dark' ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"} fill={theme === 'dark' ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)"} />
                         </AreaChart>
                     </ResponsiveContainer>
                 </motion.div>
 
                 {/* Wind and Precipitation */}
-                <motion.div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-white/10 shadow-2xl h-[400px] w-full">
-                    <h3 className="text-lg font-semibold mb-4 text-white/90">Wind Speed (max km/h) & Precipitation (mm)</h3>
+                <motion.div className="bg-white dark:bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-gray-100 dark:border-white/10 shadow-xl dark:shadow-2xl h-[400px] w-full">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white/90">Wind Speed (max km/h) & Precipitation (mm)</h3>
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 12}} minTickGap={50}/>
-                            <YAxis yAxisId="left" stroke="rgba(255,255,255,0.5)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 12}} />
-                            <YAxis yAxisId="right" orientation="right" stroke="rgba(255,255,255,0.5)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 12}} />
-                            <RechartsTooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} vertical={false} />
+                            <XAxis dataKey="date" stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} minTickGap={50}/>
+                            <YAxis yAxisId="left" stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} />
+                            <YAxis yAxisId="right" orientation="right" stroke={theme === 'dark' ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"} tick={{fill: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#6b7280', fontSize: 12}} />
+                            <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.8)' : '#fff', border: theme === 'dark' ? 'none' : '1px solid #e5e7eb', borderRadius: '8px', color: theme === 'dark' ? '#fff' : '#1f2937' }} />
                             <Legend verticalAlign="top" height={36} />
                             <Bar yAxisId="left" name="Precipitation" dataKey="precip" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                             <Bar yAxisId="right" name="Max Wind" dataKey="windMax" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                            <Brush dataKey="date" height={30} stroke="rgba(255,255,255,0.2)" fill="rgba(0,0,0,0.3)" />
+                            <Brush dataKey="date" height={30} stroke={theme === 'dark' ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"} fill={theme === 'dark' ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)"} />
                         </BarChart>
                     </ResponsiveContainer>
                 </motion.div>
 
                 {/* Sun Cycle Info (Custom Visualization since it's hard to plot time effectively, we'll plot the duration maybe? Or just show a table-like chart) */}
-                <motion.div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-white/10 shadow-2xl overflow-x-auto">
-                   <h3 className="text-lg font-semibold mb-4 text-white/90">Sun Cycle & Dominant Wind Direction (Sampled)</h3>
+                <motion.div className="bg-white dark:bg-white/5 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-gray-100 dark:border-white/10 shadow-xl dark:shadow-2xl overflow-x-auto">
+                   <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white/90">Sun Cycle & Dominant Wind Direction (Sampled)</h3>
                    <div className="min-w-[600px]">
-                     <table className="w-full text-left text-sm text-gray-300">
-                        <thead className="bg-white/10 uppercase font-semibold text-gray-200">
+                     <table className="w-full text-left text-sm text-gray-700 dark:text-gray-300">
+                        <thead className="bg-gray-50 dark:bg-white/10 uppercase font-semibold text-gray-900 dark:text-gray-200">
                            <tr>
                                <th className="p-3 rounded-tl-lg">Date</th>
                                <th className="p-3">Sunrise (IST)</th>
@@ -234,7 +250,7 @@ export default function Historical() {
                         <tbody>
                            {/* Only show 1 entry per week approx to avoid massive lists, or first 30 */}
                            {chartData.filter((_, i) => i % Math.ceil(chartData.length / 30) === 0).map((day, idx) => (
-                             <tr key={idx} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                             <tr key={idx} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                  <td className="p-3">{day.date}</td>
                                  <td className="p-3 flex items-center space-x-2"><Sun className="w-4 h-4 text-yellow-400"/> {day.sunriseIST}</td>
                                  <td className="p-3 flex items-center space-x-2"><Sun className="w-4 h-4 text-orange-500"/> {day.sunsetIST}</td>
